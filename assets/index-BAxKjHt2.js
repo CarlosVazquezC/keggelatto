@@ -104,6 +104,11 @@ function run(steps, { audio, discreet = false, onStep, onTick = () => {}, onEnd,
 			const next = steps.findIndex((s, i) => i > index && !skip.includes(s.block));
 			seek(next === -1 ? duration(steps) : steps[next].start);
 		},
+		next() {
+			if (stopped) return;
+			const { index } = stepAt(steps, elapsed());
+			seek(steps[index + 1]?.start ?? duration(steps));
+		},
 		visibility(hidden) {
 			if (stopped) return;
 			if (hidden && discreet) {
@@ -125,6 +130,432 @@ function run(steps, { audio, discreet = false, onStep, onTick = () => {}, onEnd,
 		}
 	};
 }
+//#endregion
+//#region src/kettlebell.js
+var ARMS = [
+	10,
+	12,
+	15
+];
+var LEGS = [
+	10,
+	12,
+	15,
+	18,
+	20
+];
+var WARM = 300;
+var CAP = 3600;
+var PER_REP = 4;
+var READY = 3;
+var ROUND_REST = 90;
+var SIDE = 10;
+var CHANGES = [
+	3,
+	5,
+	7,
+	9,
+	11
+];
+var RATINGS$1 = [
+	["easy", "Fácil"],
+	["good", "Bien"],
+	["hard", "Difícil"],
+	["fail", "No pude terminar"]
+];
+var EXERCISES = {
+	deadlift: {
+		name: "Peso muerto",
+		art: "el",
+		reps: LEGS,
+		variant: "baja en 3 segundos",
+		cue: "Cadera hacia atrás, espalda neutra, la pesa entre los pies.",
+		avoid: "Evita redondear la espalda o hacer sentadilla en vez de bisagra."
+	},
+	goblet: {
+		name: "Sentadilla goblet",
+		art: "la",
+		reps: LEGS,
+		variant: "pausa de 2 segundos abajo",
+		cue: "Pesa vertical al pecho, codos pegados, espalda recta; empuja con los pies y baja hasta donde sea cómodo.",
+		avoid: "Evita que las rodillas se vayan hacia adentro o que se levanten los talones."
+	},
+	row: {
+		name: "Remo con un brazo",
+		art: "el",
+		reps: ARMS,
+		sides: true,
+		variant: "pausa de 2 segundos arriba",
+		cue: "La otra mano apoyada, espalda plana, abdomen firme, hombros abajo y atrás; exhala al jalar, sin girar el tronco.",
+		avoid: "Evita girar o subir los hombros."
+	},
+	floorPress: {
+		name: "Press en el piso",
+		art: "el",
+		reps: ARMS,
+		sides: true,
+		variant: "baja en 3 segundos",
+		cue: "Acostado: el piso limita cuánto baja el codo. Para subir y bajar la pesa, rueda de lado con las dos manos en el asa.",
+		avoid: "Evita abrir mucho los codos."
+	},
+	carry: {
+		name: "Carga de maleta",
+		art: "la",
+		secs: [
+			30,
+			40,
+			50,
+			60
+		],
+		sides: true,
+		cue: "La pesa en una mano, agarre firme, espalda recta, y camina.",
+		avoid: "Evita inclinarte hacia la pesa o hacia el otro lado."
+	},
+	swing: {
+		name: "Swing con dos manos",
+		art: "el",
+		reps: LEGS,
+		talk: true,
+		alt: "deadlift",
+		cue: "La fuerza sale de la cadera, no de los hombros; la pesa sube a la altura del pecho. Arriba, de pie y derecho, sin echar la espalda hacia atrás.",
+		avoid: "Si irrita la espalda baja, vuelve al peso muerto."
+	},
+	split: {
+		name: "Sentadilla dividida",
+		art: "la",
+		reps: LEGS,
+		sides: true,
+		variant: "con la pesa al pecho",
+		alt: "goblet",
+		cue: "Zancada hacia atrás, espalda recta, rango cómodo. Primero sin peso.",
+		avoid: "Cuida las rodillas."
+	},
+	press: {
+		name: "Press sobre la cabeza",
+		art: "el",
+		reps: ARMS,
+		sides: true,
+		variant: "baja en 3 segundos",
+		alt: "floorPress",
+		cue: "Codo cerca de las costillas, pies escalonados. Con la pesa sólo si te salen 8 limpias; si no, sin peso.",
+		avoid: "Si duele el hombro, quédate con el press en el piso."
+	},
+	getup: {
+		name: "Medio levantamiento turco",
+		art: "el",
+		fixed: {
+			sets: 1,
+			reps: 3
+		},
+		sides: true,
+		alt: null,
+		cue: "La mirada en la pesa, brazo vertical y codo firme; si la pesa se inclina, bájala con las dos manos, sin intentar salvarla. Con la pesa sólo si te salen 8 limpias; si no, sin peso.",
+		avoid: "Cuida los hombros."
+	},
+	hinge: {
+		name: "Bisagra de cadera sin peso",
+		art: "la",
+		fixed: {
+			sets: 2,
+			reps: 10
+		},
+		cue: "Cadera hacia atrás, espalda neutra."
+	},
+	squat: {
+		name: "Sentadilla sin peso",
+		art: "la",
+		fixed: {
+			sets: 2,
+			reps: 10
+		},
+		cue: "Espalda recta, empuja con los pies, rango cómodo."
+	}
+};
+var LIGHT_CARRY = {
+	sets: 2,
+	secs: 30
+};
+function ladder({ reps, secs, variant, talk }) {
+	if (secs) return secs.map((s) => ({
+		secs: s,
+		rest: 60
+	}));
+	const up = (sets, v) => reps.map((r) => ({
+		sets,
+		reps: r,
+		variant: v,
+		rest: 60
+	}));
+	const steps = [
+		...up(1, false),
+		...up(2, false),
+		...up(3, false),
+		...variant ? up(3, true) : []
+	];
+	return talk ? steps : [
+		...steps,
+		{
+			...steps.at(-1),
+			rest: 45
+		},
+		{
+			...steps.at(-1),
+			rest: 30
+		}
+	];
+}
+var LADDERS = Object.fromEntries(Object.entries(EXERCISES).filter(([, e]) => !e.fixed).map(([id, e]) => [id, ladder(e)]));
+var prescription = (id, step) => LADDERS[id][Math.min(step, LADDERS[id].length) - 1];
+var SESSIONS = [
+	{
+		name: "Piernas A",
+		ids: () => [
+			"deadlift",
+			"goblet",
+			"carry"
+		]
+	},
+	{
+		name: "Parte superior A",
+		ids: () => [
+			"row",
+			"floorPress",
+			"carry"
+		]
+	},
+	{
+		name: "Ligero",
+		light: true,
+		ids: (week) => [
+			"hinge",
+			"squat",
+			...week >= 11 ? ["getup"] : [],
+			"carry"
+		]
+	},
+	{
+		name: "Piernas B",
+		ids: (week, swing) => [
+			week >= 7 && swing ? "swing" : "deadlift",
+			week >= 5 ? "split" : "goblet",
+			"carry"
+		]
+	},
+	{
+		name: "Parte superior B",
+		ids: (week) => [
+			"row",
+			week >= 9 ? "press" : "floorPress",
+			"carry"
+		]
+	}
+];
+function nextLift(lifts, restart, walkUp) {
+	const last = lifts.at(-1);
+	if (restart !== null) return {
+		week: restart,
+		n: 1,
+		held: false
+	};
+	if (!last) return {
+		week: 1,
+		n: 1,
+		held: false
+	};
+	if (last.n < 5) return {
+		week: last.week,
+		n: last.n + 1,
+		held: false
+	};
+	const held = walkUp && CHANGES.includes(last.week + 1);
+	return {
+		week: held ? last.week : last.week + 1,
+		n: 1,
+		held
+	};
+}
+var days$1 = (from, to) => (Date.parse(to) - Date.parse(from)) / 864e5;
+var stepDown = (all) => Object.fromEntries(Object.entries(all).map(([id, e]) => [id, {
+	...e,
+	step: Math.max(1, e.step - 1),
+	streak: 0
+}]));
+function apply(prev, item, week) {
+	const now = prev ?? {
+		step: 1,
+		streak: 0,
+		hurt: 0,
+		since: week,
+		swapped: false
+	};
+	if (item.hurt) {
+		const hurt = now.hurt + 1;
+		const again = hurt >= 2;
+		return {
+			...now,
+			hurt,
+			streak: 0,
+			step: again ? Math.max(1, now.step - 1) : now.step,
+			swapped: now.swapped || again && EXERCISES[item.id].alt !== void 0
+		};
+	}
+	const base = {
+		...now,
+		hurt: 0
+	};
+	if (!LADDERS[item.id] || week < now.since + 2) return base;
+	if (!item.rating) return {
+		...base,
+		streak: 0
+	};
+	if (item.rating === "fail") return {
+		...base,
+		step: Math.max(1, now.step - 1),
+		streak: 0
+	};
+	if (item.rating === "hard") return {
+		...base,
+		streak: 0
+	};
+	const streak = now.streak + 1;
+	return streak >= 2 ? {
+		...base,
+		step: Math.min(LADDERS[item.id].length, now.step + 1),
+		streak: 0
+	} : {
+		...base,
+		streak
+	};
+}
+function ladderState(lifts, today) {
+	let all = {};
+	let last = null;
+	for (const lift of lifts) {
+		if (last !== null && days$1(last, lift.day) >= 7) all = stepDown(all);
+		all = lift.items.reduce((acc, item) => ({
+			...acc,
+			[item.id]: apply(acc[item.id], item, lift.week)
+		}), all);
+		last = lift.day;
+	}
+	return last !== null && days$1(last, today) >= 7 ? stepDown(all) : all;
+}
+var started = (lifts, id) => lifts.some((l) => l.items.some((i) => i.id === id));
+function swingDue(lifts, { today, walkUp, restart = null }) {
+	const { week, n } = nextLift(lifts, restart, walkUp);
+	return week >= 7 && n === 4 && !started(lifts, "swing") && !ladderState(lifts, today).swing?.swapped;
+}
+function liftPlan(lifts, { restart, today, walkUp, swing = false, session: at = null }) {
+	const next = at ? {
+		...at,
+		held: false
+	} : nextLift(lifts, restart, walkUp);
+	const all = ladderState(lifts, today);
+	const session = SESSIONS[next.n - 1];
+	const items = session.ids(next.week, swing || started(lifts, "swing")).map((id) => all[id]?.swapped ? EXERCISES[id].alt : id).filter(Boolean).map((id) => {
+		const ex = EXERCISES[id];
+		const step = all[id]?.step ?? 1;
+		const dose = session.light ? ex.fixed ?? LIGHT_CARRY : ex.fixed ?? prescription(id, step);
+		const learning = session.light || next.week < (all[id]?.since ?? next.week) + 2;
+		return {
+			id,
+			step,
+			sides: Boolean(ex.sides),
+			talk: Boolean(ex.talk),
+			rest: 60,
+			variant: false,
+			...dose,
+			learning
+		};
+	});
+	return {
+		...next,
+		name: session.name,
+		light: Boolean(session.light),
+		items
+	};
+}
+var restSteps = (prev, next, secs) => prev?.talk ? [{
+	type: "rest",
+	dur: CAP,
+	est: 90,
+	until: true,
+	talk: true,
+	sound: "release",
+	prev: prev.id,
+	next: next.id
+}] : [{
+	type: "rest",
+	dur: secs - READY,
+	sound: "release",
+	prev: prev?.id,
+	next: next.id
+}, {
+	type: "ready",
+	dur: READY,
+	sound: "prep",
+	prev: prev?.id,
+	next: next.id
+}];
+function setSteps(item, round) {
+	const one = (side) => item.secs ? {
+		type: "timed",
+		dur: item.secs,
+		sound: "squeeze",
+		ex: item.id,
+		side,
+		round
+	} : {
+		type: "set",
+		dur: CAP,
+		est: item.reps * PER_REP,
+		until: true,
+		sound: "squeeze",
+		ex: item.id,
+		reps: item.reps,
+		side,
+		round
+	};
+	return item.sides ? [
+		one(1),
+		{
+			type: "side",
+			dur: SIDE,
+			sound: "setEnd",
+			ex: item.id,
+			round
+		},
+		one(2)
+	] : [one(0)];
+}
+var rounds = ({ items }) => Math.max(1, ...items.map((i) => i.sets ?? 1));
+function buildLift({ items, light }, { resume = false } = {}) {
+	const total = rounds({ items });
+	const steps = resume ? [] : [{
+		type: "warm",
+		dur: WARM,
+		sound: "prep"
+	}];
+	if (!light && !resume) steps.push({
+		type: "practice",
+		dur: CAP,
+		est: 150,
+		until: true,
+		sound: "prep"
+	});
+	let prev = null;
+	for (let round = 1; round <= total; round++) items.filter((i) => (i.sets ?? total) >= round).forEach((item, k) => {
+		if (prev) steps.push(...restSteps(prev, item, k ? prev.rest : ROUND_REST));
+		steps.push(...setSteps(item, round));
+		prev = item;
+	});
+	return timeline(steps);
+}
+var minutes = (steps) => Math.round(steps.reduce((t, s) => t + (s.est ?? s.dur), 0) / 60);
+var setsDone = (steps, elapsed) => steps.filter((s) => (s.type === "set" || s.type === "timed") && s.side !== 1 && s.start + s.dur <= elapsed).reduce((acc, s) => ({
+	...acc,
+	[s.ex]: (acc[s.ex] ?? 0) + 1
+}), {});
 //#endregion
 //#region src/store.js
 var KEY = "keggelatto:state";
@@ -169,7 +600,10 @@ var initialState = () => ({
 		speed: null,
 		resumedAfter: null
 	},
-	walks: []
+	walks: [],
+	liftCheck: null,
+	kettlebell: { restart: null },
+	lifts: []
 });
 var NOT_OURS = "El archivo no es un registro de Keggelatto.";
 var isNum = (v) => typeof v === "number" && Number.isFinite(v);
@@ -177,9 +611,13 @@ var isTime = (v) => v === null || isNum(v);
 var isInt = (v, min, max) => Number.isInteger(v) && v >= min && v <= max;
 var isBool = (v) => typeof v === "boolean";
 var isStrings = (v) => Array.isArray(v) && v.every((s) => typeof s === "string");
+var isDay = (v) => typeof v === "string" && /^\d{4}-\d\d-\d\d$/.test(v);
 var isList = (v, ok) => Array.isArray(v) && v.every((x) => x !== null && typeof x === "object" && ok(x));
+var isAnswers = (v) => v === null || isBool(v?.ok) && isNum(v.at) && isStrings(v.ids);
+var RATING_IDS = RATINGS$1.map(([id]) => id);
+var isLiftItem = (i) => Object.hasOwn(EXERCISES, i.id) && isInt(i.step, 1, 30) && isInt(i.sets, 0, 10) && (i.rating === null || RATING_IDS.includes(i.rating)) && isBool(i.hurt);
 function valid(s) {
-	const { screening: sc, phase: p, prefs, exercise: ex, treadmill: t } = s;
+	const { screening: sc, phase: p, prefs, exercise: ex, treadmill: t, kettlebell: k } = s;
 	return [
 		s.learned,
 		s.expectSeen,
@@ -196,7 +634,7 @@ function valid(s) {
 		p.resumedAfter,
 		t.start,
 		t.resumedAfter
-	].every(isTime) && (t.speed === null ? t.start === null : isNum(t.speed) && t.speed >= 1 && t.speed <= 10) && (ex === null || isBool(ex?.ok) && isNum(ex.at) && isStrings(ex.ids)) && Array.isArray(s.exerciseAlerts) && s.exerciseAlerts.every(isNum) && isList(s.walks, (w) => isNum(w.at) && typeof w.day === "string" && isNum(w.moderate) && isNum(w.light) && (w.speed === null || isNum(w.speed)) && isInt(w.stage, 1, 5)) && isInt(p.id, 1, 6) && isInt(prefs.cue, 0, 3) && (sc === null || [
+	].every(isTime) && (t.speed === null ? t.start === null : isNum(t.speed) && t.speed >= 1 && t.speed <= 10) && isAnswers(ex) && isAnswers(s.liftCheck) && (k.restart === null || isInt(k.restart, 1, 1e3)) && isList(s.lifts, (l) => isNum(l.at) && isDay(l.day) && isInt(l.week, 1, 1e3) && isInt(l.n, 1, 5) && isList(l.items, isLiftItem)) && Array.isArray(s.exerciseAlerts) && s.exerciseAlerts.every(isNum) && isList(s.walks, (w) => isNum(w.at) && isDay(w.day) && isNum(w.moderate) && isNum(w.light) && (w.speed === null || isNum(w.speed)) && isInt(w.stage, 1, 5)) && isInt(p.id, 1, 6) && isInt(prefs.cue, 0, 3) && (sc === null || [
 		"A",
 		"B",
 		"C"
@@ -238,6 +676,10 @@ function parse(text) {
 		treadmill: {
 			...base.treadmill,
 			...data.treadmill
+		},
+		kettlebell: {
+			...base.kettlebell,
+			...data.kettlebell
 		}
 	};
 	if (!valid(state)) throw new Error(NOT_OURS);
@@ -708,8 +1150,16 @@ var REVIEW = [
 	{
 		id: "effortPain",
 		text: "Dolor en la mandíbula, el cuello, un brazo o la espalda alta que aparece al caminar o con la pesa rusa y se quita al descansar"
+	},
+	{
+		id: "joint",
+		text: "Dolor en una articulación que duró más de 2 días"
 	}
 ];
+function jointAdvice(yes, before = []) {
+	if (!yes.includes("joint")) return null;
+	return before.includes("joint") ? "El dolor de la articulación sigue: consulta a un médico o a un fisioterapeuta." : "Dolor en una articulación: si viene de la pesa rusa, toca \"Me duele\" en ese ejercicio y la siguiente vez baja un escalón o cambia a su alternativa. Si sigue una semana más, consulta.";
+}
 var PAINS = [
 	"pain",
 	"ejacPain",
@@ -823,6 +1273,26 @@ function exerciseMode({ screening, exercise, reviews, exerciseAlerts }) {
 	const after = (t) => t > exercise.at;
 	return exerciseAlerts.some(after) || reviews.some((r) => r.exercise === "stop" && after(r.at)) ? "stop" : "normal";
 }
+var LIFT_CHECK = [
+	{
+		id: "pressure",
+		text: "Presión alta diagnosticada que no está controlada"
+	},
+	{
+		id: "joint",
+		text: "Dolor o lesión de espalda, cadera, rodilla u hombro que ya limita tus actividades, o artrosis"
+	},
+	{
+		id: "hernia",
+		text: "Una hernia, o un bulto en la ingle, el ombligo o el abdomen que crece al toser o al hacer fuerza"
+	}
+];
+function liftMode(state) {
+	const m = exerciseMode(state);
+	if (m !== "normal") return m;
+	if (!state.liftCheck) return "check";
+	return state.liftCheck.ok ? "normal" : "consult";
+}
 var reviewDue = ({ startedAt, reviews }, now) => startedAt !== null && now - (reviews.at(-1)?.at ?? startedAt) >= 7 * DAY$1;
 //#endregion
 //#region src/treadmill.js
@@ -873,7 +1343,7 @@ function walkDay(now) {
 	return day >= 1 && day <= 5;
 }
 var warmSpeed = (speed) => Math.max(2.5, round1(speed - 1));
-function buildWalk(stage, { lightOnly = false } = {}) {
+function buildWalk(stage, { lightOnly = false, warm = true } = {}) {
 	const light = {
 		type: "light",
 		dur: 7200,
@@ -882,12 +1352,12 @@ function buildWalk(stage, { lightOnly = false } = {}) {
 	};
 	if (lightOnly) return timeline([light]);
 	return timeline([
-		{
+		...warm ? [{
 			type: "warm",
 			dur: 300,
 			sound: "prep",
 			block: "warm"
-		},
+		}] : [],
 		{
 			type: "moderate",
 			dur: stage.moderate * 60,
@@ -896,6 +1366,10 @@ function buildWalk(stage, { lightOnly = false } = {}) {
 		},
 		light
 	]);
+}
+function walkStepsUp(state, now) {
+	const week = currentWeek(state, now);
+	return state.treadmill.start !== null && week >= 4 && week % 2 === 0;
 }
 function speedTest() {
 	const n = Math.round((6.4 - 3) / .2) + 1;
@@ -1068,7 +1542,7 @@ var clock = (seconds) => {
 //#endregion
 //#region src/walk.js
 var SAFETY = "Usa la llave de seguridad, súbete y bájate con la banda detenida, y detenla para voltear, agacharte o tomar algo. Brazos libres: si necesitas apoyo, sólo la punta de dos dedos.";
-var WHERE = {
+var WHERE$1 = {
 	warm: "Calentamiento: caminata suave",
 	moderate: "Bloque moderado",
 	light: "Caminata ligera",
@@ -1149,7 +1623,10 @@ function walkScreens(app) {
 		const now = Date.now();
 		if (exerciseMode(s) !== "normal" || kind !== "test" && s.treadmill.speed === null) return app.go("home");
 		const stage = currentStage(s, now);
-		const steps = kind === "test" ? speedTest() : buildWalk(stage, { lightOnly: kind === "light" });
+		const steps = kind === "test" ? speedTest() : buildWalk(stage, {
+			lightOnly: kind === "light",
+			warm: kind !== "block"
+		});
 		const today = todayWalk(s.walks, now);
 		const target = {
 			test: kind === "test",
@@ -1185,7 +1662,7 @@ function walkScreens(app) {
 		return {
 			onStep({ step }) {
 				$(".session").dataset.type = step.type;
-				$(".where").textContent = WHERE[step.type];
+				$(".where").textContent = WHERE$1[step.type];
 				$(".kmh").textContent = kmh(shownSpeed(step));
 				$(".hint").textContent = HINT[step.type];
 				$(".speedset").hidden = step.type !== "moderate";
@@ -1348,11 +1825,11 @@ function walkScreens(app) {
       <button data-do="hurtWhere" data-where="upper">En la mandíbula, el cuello, un brazo o la espalda alta</button>
       <button data-do="hurtWhere" data-where="legs">En los pies o las rodillas</button>
       <button data-do="hurtWhere" data-where="other">En otro lugar</button>`,
-			emergency: () => `<h1>Deja de caminar</h1>
+			emergency: () => `<h1>Detente</h1>
       ${emergencyBox()}
       ${box("alert", `<p>Si se quita al descansar, es una señal del cuestionario de ejercicio. ${EXERCISE_STOP}</p>`)}
       <button class="primary" data-do="home">Volver a Hoy</button>`,
-			unwell: () => `<h1>Deja de caminar y siéntate</h1>
+			unwell: () => `<h1>Detente y siéntate</h1>
       ${emergencyBox()}
       <p>Si no es una emergencia pero tuviste mareo, palpitaciones, falta de aire fuera de lo normal o dolor de pantorrilla, es una señal del cuestionario de ejercicio.</p>
       <button class="primary" data-do="exerciseSignal">Tuve una de esas señales</button>
@@ -1361,6 +1838,7 @@ function walkScreens(app) {
 		actions: {
 			walkStart: () => start("walk"),
 			walkLight: () => start("light"),
+			walkBlock: () => start("block"),
 			speedTest: () => start("test"),
 			faster: () => adjust(.1),
 			slower: () => adjust(-.1),
@@ -1427,6 +1905,400 @@ function walkScreens(app) {
 	};
 }
 //#endregion
+//#region src/lift.js
+var WHERE = {
+	warm: "Calentamiento: caminadora suave",
+	practice: "Práctica sin peso",
+	rest: "Descanso",
+	ready: "Descanso"
+};
+var LABEL$1 = Object.fromEntries(RATINGS$1);
+var CONSULT = "Consulta antes de empezar la pesa rusa. Mientras tanto puedes caminar.";
+var UNLOCK = "Cuando te den el visto bueno, vuelve a contestar las preguntas sin marcar esa señal.";
+var NOTHING = "No terminaste ninguna serie: la pesa rusa no se guardó.";
+var the = (id) => `${EXERCISES[id].art} ${EXERCISES[id].name.toLowerCase()}`;
+var AFTER = `<p>Dolor muscular de 1 a 3 días es normal al empezar.</p>
+  ${box("alert", "<p>Orina oscura (rojiza o café) en los días siguientes, aunque el dolor sea leve, sobre todo con debilidad o dificultad para caminar: ve a urgencias.</p>")}
+  <p class="small">Un bulto nuevo en la ingle o el abdomen: deja la pesa rusa, márcalo en Ajustes (preguntas de la pesa rusa) y consulta. Si duele, hay náusea o vómito, o el abdomen se hincha, ve el mismo día.</p>`;
+function liftScreens(app) {
+	const state = () => app.state();
+	const $ = (sel) => app.root.querySelector(sel);
+	let current = null;
+	const opts = (s, now, swing = false) => ({
+		restart: s.kettlebell.restart,
+		today: dayKey(now),
+		walkUp: walkStepsUp(s, now),
+		swing
+	});
+	const todayLift = (s, now) => s.lifts.find((l) => l.day === dayKey(now));
+	const doneToday = (s, now) => Boolean(todayLift(s, now));
+	const lastItem = (lifts, id) => lifts.findLast((l) => l.items.some((i) => i.id === id))?.items.find((i) => i.id === id);
+	function leftover(s, rec) {
+		const swing = rec.items.some((i) => i.id === "swing");
+		const plan = liftPlan(s.lifts.filter((l) => l !== rec), {
+			...opts(s, rec.at, swing),
+			session: {
+				week: rec.week,
+				n: rec.n
+			}
+		});
+		const total = rounds(plan);
+		const done = Object.fromEntries(rec.items.map((i) => [i.id, i.sets]));
+		const hurt = rec.items.filter((i) => i.hurt).map((i) => i.id);
+		return {
+			plan,
+			total,
+			done,
+			hurt,
+			items: plan.items.filter((i) => !hurt.includes(i.id)).map((i) => ({
+				...i,
+				sets: (i.sets ?? total) - (done[i.id] ?? 0)
+			})).filter((i) => i.sets > 0)
+		};
+	}
+	function dose(i, plan) {
+		const ex = EXERCISES[i.id];
+		if (i.secs) return `${plan.light ? `${i.sets} × ` : ""}${i.secs} s por lado${plan.light ? "" : " en cada vuelta"}`;
+		return `${i.sets} × ${i.reps}${i.sides ? " por lado" : ""}${i.variant ? `, ${ex.variant}` : ""}${i.rest < 60 ? `, descanso de ${i.rest} s` : ""}`;
+	}
+	function item(now) {
+		const s = state();
+		if (!walkDay(now)) return "";
+		const rec = todayLift(s, now);
+		const plan = liftPlan(s.lifts, opts(s, now));
+		const name = rec ? SESSIONS[rec.n - 1].name : plan.name;
+		const done = rec && !leftover(s, rec).items.length;
+		const status = liftMode(s) !== "normal" ? "en pausa" : done ? "✓ hecha" : rec ? "sin terminar" : `${minutes(buildLift(plan))} min`;
+		return `<li class="${done ? "done" : ""}"><span>Pesa rusa: ${name}, con 5 min de caminadora suave</span><strong>${status}</strong></li>`;
+	}
+	function change(id) {
+		const { alt, fixed } = EXERCISES[id];
+		return alt === null ? "se omite" : alt ? `se cambió por ${the(alt)}` : fixed ? "" : "bajó un escalón";
+	}
+	function pains(all, last) {
+		return Object.entries(all).filter(([id, e]) => e.hurt >= 2 && last?.items.some((i) => i.id === id && i.hurt)).map(([id]) => box("warn", `<p>${EXERCISES[id].name}: te dolió dos sesiones seguidas${change(id) ? ` y ${change(id)}` : ""}. Si sigue una semana más, consulta.</p>`)).join("");
+	}
+	function card(now) {
+		const s = state();
+		if (!walkDay(now)) return "";
+		const m = liftMode(s);
+		const today = dayKey(now);
+		const plan = liftPlan(s.lifts, opts(s, now));
+		const title = `<h2>Pesa rusa · Semana ${plan.week}, sesión ${plan.n} de 5</h2>`;
+		if (m === "consult") return `<section class="card">${title}${box("warn", `<p>${CONSULT} ${UNLOCK}</p>`)}
+        <button data-do="liftCheck">Volver a contestar las preguntas</button></section>`;
+		if (m !== "normal") return `<section class="card">${title}<p>En pausa, igual que la caminadora.</p></section>`;
+		const all = ladderState(s.lifts, today);
+		const last = s.lifts.at(-1);
+		const rec = todayLift(s, now);
+		if (rec) {
+			const more = leftover(s, rec).items.length;
+			return `<section class="card">${title}${pains(all, last)}
+        ${more ? "<p>La sesión de hoy quedó sin terminar.</p><button class=\"primary\" data-do=\"liftContinue\">Seguir la sesión de hoy</button>" : `<p>Hecha hoy. La siguiente: ${plan.name}.</p>`}</section>`;
+		}
+		const before = last ? ladderState(s.lifts, last.day) : {};
+		const paused = Object.entries(all).some(([id, e]) => e.step < before[id].step);
+		const list = plan.items.map((i) => {
+			const prev = lastItem(s.lifts, i.id);
+			const before = prev?.rating ? ` · la vez pasada: ${LABEL$1[prev.rating].toLowerCase()}` : "";
+			return `<li>${EXERCISES[i.id].name}: ${dose(i, plan)} · esfuerzo ${i.learning ? "2 a 4" : "5 a 7"}${before}</li>`;
+		}).join("");
+		const start = swingDue(s.lifts, opts(s, now)) ? `<p>Esta sesión puede entrar el swing con dos manos en lugar del peso muerto, sólo si tu peso muerto ya sale constante, con la espalda neutra.</p>
+        <button class="primary" data-do="liftStart" data-swing="1">Empezar con swing</button>
+        <button data-do="liftStart">Todavía con peso muerto</button>` : "<button class=\"primary\" data-do=\"liftStart\">Empezar pesa rusa</button>";
+		return `<section class="card">${title}
+      <p><strong>${plan.name}</strong> · unos ${minutes(buildLift(plan))} min, con 5 min de caminadora suave al empezar.</p>
+      ${plan.held ? `<p class="small">Se repite la semana ${plan.week}: la caminadora sube de etapa esta semana y no conviene subir las dos a la vez.</p>` : ""}
+      ${paused ? box("note", "<p>Después de 7 días o más sin pesa rusa, cada ejercicio bajó un escalón.</p>") : ""}
+      ${pains(all, last)}
+      <ul>${list}</ul>
+      <p class="small">Esfuerzo sobre 10. Con 5 a 7, termina cada serie con 2 o 3 repeticiones de reserva. Exhala al hacer el esfuerzo y no aguantes el aire; entre series, el piso pélvico va suelto.</p>
+      ${s.lifts.length ? "" : "<p class=\"small\">La pesa: la que te deja hacer 10 press en el piso con cada brazo y todavía te quedan 3. Para un hombre que empieza suele ser de 8 a 12 kg.</p>"}
+      ${start}</section>`;
+	}
+	const weekLine = (now) => {
+		const s = state();
+		const { week, n } = liftPlan(s.lifts, opts(s, now));
+		return `<p>Pesa rusa: semana ${week}, ${n - 1} de 5 sesiones</p>`;
+	};
+	function progress(now) {
+		const s = state();
+		if (!s.lifts.length) return "";
+		const all = ladderState(s.lifts, dayKey(now));
+		const { week } = liftPlan(s.lifts, opts(s, now));
+		return `<section class="card"><h2>Pesa rusa · Semana ${week}</h2><ul>${Object.entries(all).filter(([id, e]) => !EXERCISES[id].fixed && !e.swapped).map(([id, e]) => {
+			const p = prescription(id, e.step);
+			const prev = lastItem(s.lifts, id);
+			const what = p.secs ? `${p.secs} s por lado` : `${p.sets} × ${p.reps}`;
+			return `<li>${EXERCISES[id].name}: escalón ${e.step} (${what})${prev?.rating ? ` · la vez pasada: ${LABEL$1[prev.rating].toLowerCase()}` : ""}</li>`;
+		}).join("")}</ul>
+      ${liftMode(s) === "normal" ? `<button data-do="liftRepeat">Repetir la semana ${s.lifts.at(-1).week}</button>` : ""}</section>`;
+	}
+	function start(swing) {
+		const s = state();
+		const now = Date.now();
+		if (liftMode(s) !== "normal" || !walkDay(now) || doneToday(s, now)) return app.go("home");
+		const plan = liftPlan(s.lifts, opts(s, now, swing));
+		current = {
+			at: now,
+			plan,
+			rounds: rounds(plan),
+			done: {},
+			warm: 0,
+			hurt: [],
+			ex: null,
+			steps: null,
+			index: 0
+		};
+		runSteps(buildLift(plan));
+	}
+	function resume() {
+		const s = state();
+		const rec = todayLift(s, Date.now());
+		if (!rec || liftMode(s) !== "normal") return app.go("home");
+		const { plan, total, done, hurt, items } = leftover(s, rec);
+		const warm = (s.walks.find((w) => w.at === rec.at)?.light ?? 0) * 60;
+		current = {
+			at: rec.at,
+			plan,
+			rounds: total,
+			done,
+			warm,
+			hurt,
+			ex: null,
+			steps: null,
+			index: 0
+		};
+		runSteps(buildLift({
+			...plan,
+			items
+		}, { resume: true }));
+	}
+	function runSteps(steps) {
+		app.go("lift");
+		app.runSession({
+			kind: "lift",
+			steps,
+			onEnd: (session) => {
+				current = tally(session);
+				finish();
+			},
+			onHide: (session) => save(tally(session)),
+			...screen(steps)
+		});
+	}
+	function tally(session) {
+		const elapsed = session.runner.elapsed();
+		const now = setsDone(session.steps, elapsed);
+		const done = Object.fromEntries([.../* @__PURE__ */ new Set([...Object.keys(current.done), ...Object.keys(now)])].map((id) => [id, (current.done[id] ?? 0) + (now[id] ?? 0)]));
+		const warm = session.steps[0].type === "warm" ? Math.min(elapsed, session.steps[0].dur) : current.warm;
+		return {
+			...current,
+			done,
+			warm
+		};
+	}
+	function save({ at, plan, done, hurt, warm }, ratings = {}) {
+		const s = state();
+		const items = plan.items.filter((i) => done[i.id] || hurt.includes(i.id)).map((i) => ({
+			id: i.id,
+			step: i.step,
+			sets: done[i.id] ?? 0,
+			rating: ratings[i.id] ?? null,
+			hurt: hurt.includes(i.id)
+		}));
+		const walk = warm >= 60 ? [{
+			at,
+			day: dayKey(at),
+			moderate: 0,
+			light: round1(warm / 60),
+			speed: s.treadmill.speed,
+			stage: currentStage(s, at).id
+		}] : [];
+		if (!items.length && !walk.length) return;
+		const record = {
+			at,
+			day: dayKey(at),
+			week: plan.week,
+			n: plan.n,
+			items
+		};
+		app.persist({
+			...s,
+			startedAt: s.startedAt ?? at,
+			kettlebell: items.length ? { restart: null } : s.kettlebell,
+			lifts: items.length ? [...s.lifts.filter((l) => l.at !== at), record] : s.lifts,
+			walks: [...s.walks.filter((w) => w.at !== at), ...walk]
+		});
+	}
+	const rateable = () => current.plan.light ? [] : current.plan.items.filter((i) => !current.hurt.includes(i.id) && (current.done[i.id] ?? 0) >= (i.reps ? i.sets : current.rounds));
+	function finish(note = NOTHING) {
+		save(current);
+		const saved = state().lifts.some((l) => l.at === current.at);
+		if (!saved) app.say(note);
+		app.go(!saved ? "home" : rateable().length ? "liftRate" : "liftDone");
+	}
+	function pause() {
+		const session = app.session();
+		if (!session) return;
+		const { index, step } = stepAt(session.steps, session.runner.elapsed());
+		const suspects = step?.ex ? [step.ex] : [...new Set([step?.prev, step?.next].filter(Boolean))];
+		current = {
+			...tally(session),
+			steps: session.steps,
+			index,
+			suspects
+		};
+		app.stopSession();
+		save(current);
+	}
+	function screen(steps) {
+		const s = state();
+		const plan = current.plan;
+		const total = Math.max(...steps.map((st) => st.round ?? 1));
+		return {
+			onStep({ step }) {
+				const ex = EXERCISES[step.ex];
+				$(".session").dataset.type = step.type;
+				$(".where").textContent = ex ? ex.name : WHERE[step.type];
+				$(".left").textContent = step.type === "side" ? "Cambia de lado" : ex ? `${[
+					"",
+					"Primer lado · ",
+					"Segundo lado · "
+				][step.side]}Vuelta ${step.round} de ${total}${step.reps ? " · repeticiones" : ""}` : step.next ? `Sigue: ${EXERCISES[step.next].name}` : "";
+				const item = plan.items.find((i) => i.id === step.ex);
+				$(".hint").textContent = step.type === "warm" ? `${s.treadmill.speed ? `A ${warmSpeed(s.treadmill.speed).toFixed(1)} km/h. ` : ""}Después, práctica sin peso.` : step.type === "practice" ? "De 2 a 3 minutos: bisagra de cadera y sentadilla, sin peso. Toca \"Listo\" al terminar." : step.talk ? "Sigue cuando ya puedas hablar con frases completas." : step.type === "rest" ? "Entre series, el piso pélvico va suelto." : step.type === "ready" ? "Prepárate." : ex ? `${ex.cue}${item?.variant ? ` Variante: ${ex.variant}.` : ""}` : "";
+				$("[data-do=\"liftNext\"]").hidden = !step.until;
+			},
+			onTick({ step, left }) {
+				$(".count").textContent = step.type === "set" ? String(step.reps) : step.until ? `llevas ${clock(step.dur - left)}` : clock(left + (step.type === "rest" ? 3 : 0));
+			}
+		};
+	}
+	return {
+		item,
+		card,
+		weekLine,
+		progress,
+		views: {
+			liftCheck: () => `<h1>Antes de la pesa rusa</h1>
+      <p>Marca lo que tengas. Si marcas algo, consulta antes de empezar la pesa rusa; mientras tanto puedes caminar.</p>
+      ${LIFT_CHECK.map((i) => check("lift", i.id, i.text, state().liftCheck?.ids.includes(i.id))).join("")}
+      <button class="primary" data-do="liftChecked">Listo</button>
+      ${state().liftCheck ? "<button data-do=\"home\">Volver</button>" : ""}`,
+			lift: () => `<div class="session lift" data-type="warm">
+        <div class="light"></div>
+        <p class="where"></p>
+        <p class="count"></p>
+        <p class="left"></p>
+        <p class="hint"></p>
+        <button class="primary" data-do="liftNext" hidden>Listo</button>
+        <div class="actions">
+          <button data-do="liftHurt">Me duele</button>
+          <button data-do="liftUnwell">Me siento mal</button>
+          <button data-do="liftStop">Terminar</button>
+        </div>
+      </div>`,
+			liftRate: () => `<h1>¿Cómo te fue?</h1>
+      <p>La sesión ya quedó guardada. Califica cada ejercicio: dos sesiones seguidas con "fácil" o "bien" suben un escalón.</p>
+      ${rateable().map((i) => `<fieldset class="scale rate"><legend>${EXERCISES[i.id].name}</legend>
+        ${RATINGS$1.map(([id, label]) => `<label><input type="radio" name="rate-${i.id}" value="${id}"> ${label}</label>`).join("")}</fieldset>`).join("")}
+      <button class="primary" data-do="liftRated">Guardar</button>`,
+			liftDone: () => {
+				const s = state();
+				const now = Date.now();
+				const stage = currentStage(s, now);
+				const block = exerciseMode(s) === "normal" && s.treadmill.speed !== null && walkDay(now) && todayWalk(s.walks, now).moderate < stage.moderate;
+				return `<h1>Pesa rusa guardada</h1>
+        ${block ? `<p>Lo ideal es hacer el bloque moderado 3 horas o más después; si no se puede, va justo ahora.</p>
+          <button class="primary" data-do="walkBlock">Seguir con el bloque moderado</button>` : ""}
+        ${AFTER}
+        <button class="${block ? "" : "primary"}" data-do="home">Volver a Hoy</button>`;
+			},
+			liftHurtWhere: () => `<h1>¿Dónde duele?</h1>
+      <button data-do="hurtWhere" data-where="chest">En el pecho</button>
+      <button data-do="hurtWhere" data-where="upper">Opresión en la mandíbula, el cuello, un brazo o la espalda alta</button>
+      <button data-do="liftJoint">Punzante, o en una articulación</button>
+      <button data-do="liftResume" data-keep="1">Es ardor o cansancio del músculo: seguir</button>`,
+			liftWhich: () => `<h1>¿Con qué ejercicio?</h1>
+      ${current.suspects.map((id) => `<button data-do="liftJoint" data-ex="${id}">${EXERCISES[id].name}</button>`).join("")}`,
+			liftJointed: () => {
+				const { alt, fixed } = EXERCISES[current.ex];
+				const prior = state().lifts.filter((l) => l.at !== current.at);
+				const next = alt === null ? "se omite" : alt ? `cambia por ${the(alt)}` : fixed ? "" : "baja un escalón";
+				const more = current.steps.slice(current.index).some((st) => (st.type === "set" || st.type === "timed") && st.ex !== current.ex);
+				return `<h1>Terminamos ${the(current.ex)}</h1>
+        <p>${lastItem(prior, current.ex)?.hurt ? `Te dolió dos sesiones seguidas${next ? `: la próxima vez ${next}` : ""}. Si sigue una semana más, consulta.` : "Si vuelve a doler la próxima sesión, baja un escalón o cambia a su alternativa."}</p>
+        ${more ? "<button class=\"primary\" data-do=\"liftResume\">Seguir con la sesión</button>" : ""}
+        <button data-do="liftStop">Terminar aquí</button>`;
+			}
+		},
+		actions: {
+			liftStart: (el) => start(Boolean(el.dataset.swing)),
+			liftNext: () => {
+				const session = app.session();
+				if (!session) return;
+				const { step, left } = stepAt(session.steps, session.runner.elapsed());
+				if (step?.until && step.dur - left >= 1) session.runner.next();
+			},
+			liftStop: () => {
+				pause();
+				finish();
+			},
+			liftUnwell: () => {
+				pause();
+				app.go("unwell");
+			},
+			liftHurt: () => {
+				pause();
+				app.go("liftHurtWhere");
+			},
+			liftJoint: (el) => {
+				const { suspects } = current;
+				if (!suspects.length) return finish("Descansa. Si se repite o no se quita, consulta.");
+				const ex = el.dataset.ex ?? (suspects.length === 1 ? suspects[0] : null);
+				if (!ex) return app.go("liftWhich");
+				current = {
+					...current,
+					ex,
+					hurt: [...current.hurt, ex]
+				};
+				save(current);
+				app.go("liftJointed");
+			},
+			liftResume: (el) => {
+				const { steps, index, ex } = current;
+				const rest = steps.slice(index);
+				runSteps(timeline(el.dataset.keep ? rest : rest.filter((st) => st.ex !== ex && st.next !== ex)));
+			},
+			liftContinue: resume,
+			liftRated: () => {
+				const ratings = Object.fromEntries(rateable().map((i) => [i.id, app.root.querySelector(`input[name="rate-${i.id}"]:checked`)?.value]).filter(([, r]) => r));
+				save(current, ratings);
+				app.go("liftDone");
+			},
+			liftCheck: () => app.go("liftCheck"),
+			liftChecked: () => {
+				const ids = [...app.root.querySelectorAll("input[name=\"lift\"]:checked")].map((i) => i.value);
+				if (ids.length) app.say(CONSULT);
+				app.onward({ liftCheck: {
+					ok: ids.length === 0,
+					ids,
+					at: Date.now()
+				} });
+			},
+			liftRepeat: () => {
+				const s = state();
+				app.say(`Empiezas de nuevo la semana ${s.lifts.at(-1).week} de la pesa rusa.`);
+				app.commit({
+					...s,
+					kettlebell: { restart: s.lifts.at(-1).week }
+				}, "home");
+			}
+		}
+	};
+}
+//#endregion
 //#region src/app.js
 var DAY = 864e5;
 var CUES = [
@@ -1477,23 +2349,27 @@ function mount(root, { storage, player = createPlayer }) {
 	let state = reload();
 	let data = {};
 	let session = null;
-	const walk = walkScreens({
+	const app = {
 		root,
 		state: () => state,
 		session: () => session,
 		persist,
 		commit,
 		go,
+		onward,
 		say: (text) => {
 			flash = text;
 		},
 		runSession,
 		stopSession
-	});
+	};
+	const walk = walkScreens(app);
+	const lift = liftScreens(app);
 	let view = firstView();
 	function firstView() {
 		if (!state.screening) return "screening";
 		if (!state.exercise) return "exercise";
+		if (!state.liftCheck) return "liftCheck";
 		if (!state.learned) return "learn";
 		if (!state.expectSeen) return "expect";
 		if (!state.alarmsSet) return "alarms";
@@ -1762,7 +2638,11 @@ function mount(root, { storage, player = createPlayer }) {
 			const phase = phaseById(state.phase.id);
 			const minutes = Math.round(duration(buildSession(phase.id, { longClose: state.prefs.longClose })) / 30) / 2;
 			const today = state.sessions.filter((s) => s.day === dayKey(now));
-			const week = weekSummary([...state.sessions, ...state.walks], now);
+			const week = weekSummary([
+				...state.sessions,
+				...state.walks,
+				...state.lifts
+			], now);
 			const pelvic = (i) => {
 				const turn = i ? "noche" : "mañana";
 				const a = state.alarms[i];
@@ -1773,17 +2653,19 @@ function mount(root, { storage, player = createPlayer }) {
 			return `<h1>Hoy</h1>
         ${reviewDue(state, now) ? box("note", `<p>Toca la revisión semanal: un minuto de preguntas de sí o no.</p>
           <button class="primary" data-do="review">Hacer la revisión semanal</button>`) : ""}
-        <ol class="today">${pelvic(0)}${walk.item(now)}${pelvic(1)}</ol>
+        <ol class="today">${pelvic(0)}${lift.item(now)}${walk.item(now)}${pelvic(1)}</ol>
         <section class="card">
           <h2>Piso pélvico · Fase ${phase.id}: ${phase.name}</h2>
           ${modeBox(m)}
           ${m === "normal" ? banners(now) : ""}
           ${startButtons(m, phase)}
         </section>
+        ${lift.card(now)}
         ${walk.card(now)}
         <section class="card">
           <h2>Esta semana</h2>
           <p>Piso pélvico: ${week.full} de 14 sesiones${week.full >= 12 ? " · vas bien" : week.fullDays >= 3 ? " · llevas el mínimo" : ""}</p>
+          ${lift.weekLine(now)}
           ${walk.weekLine(now)}
           <div class="week">${[..."LMMJVSD"].map((d, i) => `<span class="${week.days[i] ? "done" : ""}${i === week.today ? " today" : ""}">${d}</span>`).join("")}</div>
         </section>
@@ -1832,10 +2714,12 @@ function mount(root, { storage, player = createPlayer }) {
       <button data-do="home">Ahora no</button>`,
 		reviewed: () => {
 			const r = state.reviews.at(-1);
+			const joint = jointAdvice(r.yes, state.reviews.at(-2)?.yes);
 			return `<h1>Revisión guardada</h1>
         ${r.mode ? box(r.mode === "stop" ? "alert" : "warn", `<ul>${r.advice.map((a) => `<li>${esc(a)}</li>`).join("")}</ul>`) : ""}
         ${r.exercise ? box("alert", `<p>${EXERCISE_STOP}</p>`) : ""}
-        ${r.mode || r.exercise ? "" : box("note", "<p>Todo en orden: sigue con tu plan.</p>")}
+        ${joint ? box("warn", `<p>${joint}</p>`) : ""}
+        ${r.mode || r.exercise || joint ? "" : box("note", "<p>Todo en orden: sigue con tu plan.</p>")}
         ${r.yes.includes("a") ? "<button class=\"primary\" data-do=\"rescreen\">Contestar el cuestionario ahora</button>" : ""}
         <button class="${r.yes.includes("a") ? "" : "primary"}" data-do="home">Volver a Hoy</button>`;
 		},
@@ -1860,6 +2744,7 @@ function mount(root, { storage, player = createPlayer }) {
         <section class="card"><h2>Control o fuerza (1 a 5)</h2>
           ${controls.length ? `<div class="bars">${controls.slice(-12).map((r) => `<span style="height:${Number(r.control) * 20}%" title="${esc(r.control)}"></span>`).join("")}</div>` : "<p>Aparece después de la primera revisión semanal.</p>"}
           <button data-do="repeatPhase">Repetir esta fase</button></section>
+        ${lift.progress(Date.now())}
         ${walk.progress(Date.now())}
         <button class="primary" data-do="home">Volver</button>`;
 		},
@@ -1876,8 +2761,10 @@ function mount(root, { storage, player = createPlayer }) {
       <h2>Seguridad</h2>
       <button data-do="rescreen">Volver a contestar el cuestionario</button>
       <button data-do="rescreenExercise">Volver a contestar el cuestionario de ejercicio</button>
+      <button data-do="liftCheck">Volver a contestar las preguntas de la pesa rusa</button>
       <button class="primary" data-do="home">Volver</button>`,
-		...walk.views
+		...walk.views,
+		...lift.views
 	};
 	const ACTIONS = {
 		screened: () => {
@@ -1990,7 +2877,8 @@ function mount(root, { storage, player = createPlayer }) {
 			}).click();
 			setTimeout(() => URL.revokeObjectURL(url), 1e3);
 		},
-		...walk.actions
+		...walk.actions,
+		...lift.actions
 	};
 	async function importFile(file) {
 		const before = state;

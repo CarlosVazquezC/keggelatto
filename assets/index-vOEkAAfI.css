@@ -133,7 +133,12 @@ details { margin: 12px 0; color: var(--muted); }
 .where, .hint { color: #d5dbe1; }
 
 /* Caminadora: el celular va en el tablero o el escritorio, así que la velocidad va enorme (sección 14). */
-.session.walk { justify-content: flex-start; padding-top: 48px; }
+.session.walk, .session.lift { justify-content: flex-start; padding-top: 48px; }
+.session.lift .count { font-size: 4.5rem; }
+.session[data-type="set"] .light, .session[data-type="timed"] .light { height: 60%; opacity: 0.45; }
+.session[data-type="rest"] .light, .session[data-type="practice"] .light { background: var(--breath); height: 20%; opacity: 0.35; }
+.session[data-type="ready"] .light, .session[data-type="side"] .light { height: 40%; opacity: 0.45; }
+.rate label { margin: 4px 16px 4px 0; font-size: 1rem; }
 .session[data-type="warm"] .light, .session[data-type="light"] .light { background: var(--breath); height: 20%; opacity: 0.35; }
 .session[data-type="moderate"] .light { height: 60%; opacity: 0.45; }
 .session[data-type="test"] .light { height: 40%; opacity: 0.45; }
