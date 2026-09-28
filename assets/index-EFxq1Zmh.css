@@ -1,0 +1,160 @@
+/* Pantalla oscura, números grandes y alto contraste (plan, sección 5). */
+:root {
+  color-scheme: dark;
+  --bg: #0b0d10;
+  --card: #151a21;
+  --button: #222a35;
+  --fg: #f2f4f7;
+  --muted: #a3adb8;
+  --accent: #4cc38a;
+  --breath: #4c8dff;
+  --warn: #f0b429;
+  --alert: #ff6b6b;
+}
+
+* { box-sizing: border-box; }
+
+/* Las reglas de `display` de abajo le ganarían al atributo `hidden`. */
+[hidden] { display: none !important; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 18px/1.45 system-ui, sans-serif;
+}
+
+#app { max-width: 36rem; margin: 0 auto; padding: 16px; }
+
+h1 { font-size: 1.7rem; margin: 8px 0 16px; }
+h2 { font-size: 1.15rem; margin: 20px 0 8px; }
+
+button, .button, select, input[type="time"], input[type="text"] {
+  font: inherit;
+  color: var(--fg);
+  background: var(--button);
+  border: 0;
+  border-radius: 12px;
+}
+
+button, .button {
+  display: block;
+  width: 100%;
+  min-height: 48px;
+  margin: 8px 0;
+  padding: 12px;
+  text-align: center;
+  cursor: pointer;
+}
+
+button.primary { background: var(--accent); color: #062014; font-weight: 700; }
+
+select, input[type="time"], input[type="text"] { width: 100%; min-height: 48px; padding: 10px; }
+
+.row { display: flex; gap: 8px; align-items: center; }
+.row > * { flex: 1; margin: 8px 0; }
+
+.check { display: flex; gap: 12px; align-items: flex-start; padding: 10px 0; }
+.check input { flex: none; width: 24px; height: 24px; margin: 2px 0 0; accent-color: var(--accent); }
+.field { display: block; margin: 12px 0; color: var(--muted); }
+.field input { margin-top: 4px; }
+
+.card { background: var(--card); border-radius: 16px; padding: 4px 16px 12px; margin: 16px 0; }
+.note, .warn, .alert { border-radius: 12px; padding: 4px 16px; margin: 12px 0; border-left: 4px solid; }
+.note { background: #13202e; border-color: var(--breath); }
+.warn { background: #33290f; border-color: var(--warn); }
+.alert { background: #3a1418; border-color: var(--alert); }
+
+.small { font-size: 0.9rem; color: var(--muted); }
+
+/* Lista del día (sección 13): una fila por actividad, con sus minutos o la marca de hecha. */
+.today { list-style: none; padding: 0; margin: 0 0 16px; }
+.today li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--button);
+}
+.today li strong { flex: none; color: var(--muted); font-weight: 600; }
+.today li.done strong { color: var(--accent); }
+
+.week { display: flex; gap: 8px; }
+.week span {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--button);
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+.week .done { background: var(--accent); color: #062014; font-weight: 700; }
+.week .today { outline: 2px solid var(--fg); }
+
+.bars { display: flex; gap: 6px; align-items: flex-end; height: 120px; }
+.bars span { flex: 1; background: var(--accent); border-radius: 6px 6px 0 0; }
+
+.scale { border: 0; padding: 0; margin: 16px 0; }
+.scale legend { margin-bottom: 8px; }
+.scale label { display: inline-flex; gap: 6px; align-items: center; margin-right: 16px; font-size: 1.2rem; }
+.scale input { width: 24px; height: 24px; }
+
+details { margin: 12px 0; color: var(--muted); }
+
+/* Sesión: la luz sube al apretar y baja al soltar; nunca se ve como empujar (sección 5). */
+.session {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 16px 16px 96px;
+  text-align: center;
+  background: var(--bg);
+  overflow: hidden;
+}
+.session > :not(.light, .actions) { position: relative; margin: 6px 0; }
+.session .light {
+  position: absolute;
+  inset: auto 0 0;
+  height: 12%;
+  background: var(--accent);
+  opacity: 0.3;
+  transition: height var(--t, 0.5s) ease-out, opacity var(--t, 0.5s) ease-out, background-color 0.3s;
+}
+/* Opacidad baja para que el texto blanco se lea sobre la luz. */
+.session[data-type="hold"] .light, .session[data-type="quick"] .light { height: 88%; opacity: 0.5; }
+.session[data-type="inhale"] .light { background: var(--breath); height: 55%; opacity: 0.45; }
+.session[data-type="exhale"] .light { background: var(--breath); height: 12%; opacity: 0.3; }
+
+.where, .hint { color: #d5dbe1; }
+
+/* Caminadora: el celular va en el tablero o el escritorio, así que la velocidad va enorme (sección 14). */
+.session.walk { justify-content: flex-start; padding-top: 48px; }
+.session[data-type="warm"] .light, .session[data-type="light"] .light { background: var(--breath); height: 20%; opacity: 0.35; }
+.session[data-type="moderate"] .light { height: 60%; opacity: 0.45; }
+.session[data-type="test"] .light { height: 40%; opacity: 0.45; }
+.speed { font-size: 1.4rem; }
+.kmh { font-size: 5rem; font-weight: 800; font-variant-numeric: tabular-nums; }
+.session .row, .session > button { width: 100%; max-width: 28rem; }
+.session.walk .count { font-size: 3rem; }
+.session progress { width: 100%; max-width: 28rem; height: 14px; accent-color: var(--accent); }
+.stepcount input { max-width: 8rem; text-align: center; }
+.label { font-size: 2.4rem; font-weight: 800; }
+.count { font-size: 6rem; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
+.left { font-size: 1.2rem; }
+.hint { max-width: 28rem; }
+
+.actions {
+  position: absolute;
+  inset: auto 16px 16px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.actions button { margin: 0; padding: 12px 4px; font-size: 1rem; }
+/* En la barra de abajo, un botón oculto conserva su lugar para que los otros no se muevan. */
+.actions button[hidden] { display: block !important; visibility: hidden; }
