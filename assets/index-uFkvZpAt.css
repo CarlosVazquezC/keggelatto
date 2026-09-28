@@ -129,6 +129,10 @@ details { margin: 12px 0; color: var(--muted); }
 .session[data-type="hold"] .light, .session[data-type="quick"] .light { height: 88%; opacity: 0.5; }
 .session[data-type="inhale"] .light { background: var(--breath); height: 55%; opacity: 0.45; }
 .session[data-type="exhale"] .light { background: var(--breath); height: 12%; opacity: 0.3; }
+/* Cara y cuello: sube y sostén arriba; baja, pausa y respiración abajo (sección 17, punto 3). */
+.session[data-type="up"] .light { height: 88%; opacity: 0.5; }
+.session[data-type="pause"] .light, .session[data-type="breathe"] .light { background: var(--breath); height: 12%; opacity: 0.3; }
+.session[data-type="timed"] .light { height: 40%; opacity: 0.45; }
 
 .where, .hint { color: #d5dbe1; }
 
@@ -161,5 +165,6 @@ details { margin: 12px 0; color: var(--muted); }
   gap: 8px;
 }
 .actions button { margin: 0; padding: 12px 4px; font-size: 1rem; }
+.session.face .actions { grid-template-columns: repeat(2, 1fr); }
 /* En la barra de abajo, un botón oculto conserva su lugar para que los otros no se muevan. */
 .actions button[hidden] { display: block !important; visibility: hidden; }
