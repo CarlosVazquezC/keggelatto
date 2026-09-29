@@ -132,7 +132,6 @@ details { margin: 12px 0; color: var(--muted); }
 /* Cara y cuello: sube y sostén arriba; baja, pausa y respiración abajo (sección 17, punto 3). */
 .session[data-type="up"] .light { height: 88%; opacity: 0.5; }
 .session[data-type="pause"] .light, .session[data-type="breathe"] .light { background: var(--breath); height: 12%; opacity: 0.3; }
-.session[data-type="timed"] .light { height: 40%; opacity: 0.45; }
 
 .where, .hint { color: #d5dbe1; }
 

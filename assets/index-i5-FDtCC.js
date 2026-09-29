@@ -615,7 +615,6 @@ var initialState = () => ({
 	face: {
 		start: null,
 		yogaFrom: null,
-		resumedAfter: null,
 		clearedAt: null,
 		neckStop: null,
 		photoAt: null
@@ -656,11 +655,10 @@ function valid(s) {
 	].every(isTime) && [
 		f.start,
 		f.yogaFrom,
-		f.resumedAfter,
 		f.clearedAt,
 		f.neckStop,
 		f.photoAt
-	].every(isTime) && isAnswers(s.faceCheck) && isList(s.faceSessions, (x) => isNum(x.at) && isDay(x.day) && FACE_KINDS.includes(x.kind) && isNum(x.minutes) && isBool(x.full)) && Array.isArray(s.facePains) && s.facePains.every(isNum) && (t.speed === null ? t.start === null : isNum(t.speed) && t.speed >= 1 && t.speed <= 10) && isAnswers(ex) && isAnswers(s.liftCheck) && (k.restart === null || isInt(k.restart, 1, 1e3)) && isList(s.lifts, (l) => isNum(l.at) && isDay(l.day) && isInt(l.week, 1, 1e3) && isInt(l.n, 1, 5) && isList(l.items, isLiftItem)) && Array.isArray(s.exerciseAlerts) && s.exerciseAlerts.every(isNum) && isList(s.walks, (w) => isNum(w.at) && isDay(w.day) && isNum(w.moderate) && isNum(w.light) && (w.speed === null || isNum(w.speed)) && isInt(w.stage, 1, 5)) && isInt(p.id, 1, 6) && isInt(prefs.cue, 0, 3) && (sc === null || [
+	].every(isTime) && (f.start === null || f.yogaFrom !== null) && isAnswers(s.faceCheck) && isList(s.faceSessions, (x) => isNum(x.at) && isDay(x.day) && FACE_KINDS.includes(x.kind) && isNum(x.minutes) && isBool(x.full)) && Array.isArray(s.facePains) && s.facePains.every(isNum) && (t.speed === null ? t.start === null : isNum(t.speed) && t.speed >= 1 && t.speed <= 10) && isAnswers(ex) && isAnswers(s.liftCheck) && (k.restart === null || isInt(k.restart, 1, 1e3)) && isList(s.lifts, (l) => isNum(l.at) && isDay(l.day) && isInt(l.week, 1, 1e3) && isInt(l.n, 1, 5) && isList(l.items, isLiftItem)) && Array.isArray(s.exerciseAlerts) && s.exerciseAlerts.every(isNum) && isList(s.walks, (w) => isNum(w.at) && isDay(w.day) && isNum(w.moderate) && isNum(w.light) && (w.speed === null || isNum(w.speed)) && isInt(w.stage, 1, 5)) && isInt(p.id, 1, 6) && isInt(prefs.cue, 0, 3) && (sc === null || [
 		"A",
 		"B",
 		"C"
@@ -1336,7 +1334,7 @@ var FACE_CHECK = [
 	},
 	{
 		id: "neck",
-		text: "Una lesión o cirugía de cuello o de mandíbula"
+		text: "Un problema, una lesión o una cirugía de cuello, o una lesión o cirugía de mandíbula"
 	},
 	{
 		id: "palsy",
@@ -1358,7 +1356,7 @@ function faceMode(state) {
 	if (!faceCheck.ok) return "consult";
 	return [...facePains, ...reviews.filter((r) => r.yes?.includes("jaw")).map((r) => r.at)].some((t) => t > faceCheck.at && t > (face.clearedAt ?? -Infinity)) ? "paused" : "normal";
 }
-var neckStopped = ({ face, faceCheck }) => face.neckStop !== null && face.neckStop > faceCheck.at;
+var neckStopped = ({ face, faceCheck }) => face.neckStop !== null && face.neckStop > (faceCheck?.at ?? -Infinity);
 var reviewDue = ({ startedAt, reviews }, now) => startedAt !== null && now - (reviews.at(-1)?.at ?? startedAt) >= 7 * DAY$2;
 //#endregion
 //#region src/treadmill.js
@@ -1503,6 +1501,7 @@ var BREATHE = 10;
 var PE = 2;
 var YOGA_DELAY = 14;
 var YOGA_PAUSE = 14;
+var YOGA_KINDS = ["yoga15", "yoga30"];
 var FACE = {
 	chinTuck: {
 		name: "Barbilla hacia atrás",
@@ -1520,7 +1519,7 @@ var FACE = {
 		name: "Lengua contra el paladar",
 		sets: 10,
 		hold: "week",
-		how: "Presiona justo detrás de los dientes de arriba, con los labios juntos y los dientes separados, sin apretar la mandíbula."
+		how: "Presiona suave justo detrás de los dientes de arriba, con los labios juntos y los dientes separados, sin apretar la mandíbula."
 	},
 	start: {
 		name: "Posición de inicio: media sonrisa",
@@ -1606,12 +1605,13 @@ var CHEEKS = [
 	"cheekPush",
 	"mask"
 ];
+var postureIds = (tongue) => [
+	"chinTuck",
+	"chinBall",
+	...tongue ? ["tongue"] : []
+];
 var SESSIONS = {
-	posture: (tongue) => [
-		"chinTuck",
-		"chinBall",
-		...tongue ? ["tongue"] : []
-	],
+	posture: postureIds,
 	tongue: () => ["tongue"],
 	yoga15: () => [
 		"start",
@@ -1635,6 +1635,7 @@ var SESSIONS = {
 		"close"
 	]
 };
+var holdFor = (id, week) => FACE[id].hold === "week" ? week <= 2 ? 5 : 10 : FACE[id].hold;
 function setSteps(id, ex, week) {
 	if (ex.reps) return Array.from({ length: ex.reps }, (_, i) => [
 		{
@@ -1660,7 +1661,7 @@ function setSteps(id, ex, week) {
 	]).flat();
 	return [{
 		type: "hold",
-		dur: ex.hold === "week" ? week <= 2 ? 5 : 10 : ex.hold,
+		dur: holdFor(id, week),
 		sound: "squeeze",
 		ex: id
 	}, ...ex.pe ? [{
@@ -1707,10 +1708,10 @@ function buildFace(kind, week, { tongue = false } = {}) {
 	});
 	return timeline(steps);
 }
-var minutes = (steps) => Math.round((steps.at(-1).start + steps.at(-1).dur) / 60);
+var minutes = (steps) => Math.round(duration(steps) / 60);
 var faceWeek = ({ face }, now) => face.start === null ? 1 : calendarWeek(face.start, now);
 var yogaWeek = ({ face }, now) => face.yogaFrom === null || dayNumber(now) < dayNumber(face.yogaFrom) ? 0 : calendarWeek(face.yogaFrom, now);
-var yogaKind = (week) => week === 1 ? "yoga15" : "yoga30";
+var yogaKind = (week, learned) => week === 1 || !learned ? "yoga15" : "yoga30";
 function yogaDay(week, now) {
 	if (week === 0) return false;
 	return week <= 8 || [
@@ -1731,14 +1732,13 @@ var startFace = (state, at) => state.face.start !== null ? state : {
 function afterFacePause(state, now) {
 	const { face, faceSessions } = state;
 	if (yogaWeek(state, now) === 0) return state;
-	const since = faceSessions.findLast((s) => s.kind.startsWith("yoga"))?.at ?? face.yogaFrom;
-	if (face.resumedAfter === since || dayNumber(now) - dayNumber(since) < YOGA_PAUSE) return state;
+	const last = faceSessions.findLast((s) => YOGA_KINDS.includes(s.kind))?.at ?? -Infinity;
+	if (dayNumber(now) - dayNumber(Math.max(last, face.yogaFrom)) < YOGA_PAUSE) return state;
 	return {
 		...state,
 		face: {
 			...face,
-			yogaFrom: shiftDays(now, 0),
-			resumedAfter: since
+			yogaFrom: shiftDays(now, 0)
 		}
 	};
 }
@@ -2631,7 +2631,7 @@ function liftScreens(app) {
 var DAY$1 = 864e5;
 var PHOTO_EVERY = 30;
 var CONSULT = "Consulta antes de empezar la cara y cuello. Cuando te den el visto bueno, vuelve a contestar las preguntas sin marcar esa señal.";
-var NECK = "Deja los ejercicios de cuello y consulta. Cuando te revisen, vuelve a contestar las preguntas de cara y cuello.";
+var NECK = "Deja los ejercicios de cuello y consulta. Si empezó de repente, o viene con la cara caída o dificultad para hablar, es una emergencia: llama al número de emergencias. Cuando te revisen, vuelve a contestar las preguntas de cara y cuello.";
 var TITLE = {
 	posture: "Postura y cuello",
 	tongue: "Lengua contra el paladar",
@@ -2647,18 +2647,18 @@ var LABEL$1 = {
 	breathe: "Respira normal",
 	timed: ""
 };
-var YOGA = ["yoga15", "yoga30"];
-var EXPECT = `<details><summary>Qué esperar</summary><ul>
-  <li>La postura y el cuello mejoran la postura de la cabeza y activan más los músculos bajo la barbilla.</li>
-  <li>El yoga facial podría llenar un poco las mejillas, pero la evidencia es débil y casi no incluye hombres.</li>
-  <li>Ningún ejercicio ha demostrado reducir la papada: la grasa de esa zona baja con la pérdida de grasa general, y la piel floja no responde al ejercicio.</li>
-</ul></details>`;
+var FACE_EXPECT = [
+	"La postura y el cuello mejoran la postura de la cabeza y activan más los músculos bajo la barbilla.",
+	"El yoga facial podría llenar un poco las mejillas, pero la evidencia es débil y casi no incluye hombres.",
+	"Ningún ejercicio ha demostrado reducir la papada: la grasa de esa zona baja con la pérdida de grasa general, y la piel floja no responde al ejercicio."
+];
+var EXPECT = `<details><summary>Qué esperar</summary><ul>${FACE_EXPECT.map((e) => `<li>${e}</li>`).join("")}</ul></details>`;
 function faceScreens(app) {
 	const state = () => app.state();
 	const $ = (sel) => app.root.querySelector(sel);
 	const did = (s, now, kinds) => s.faceSessions.some((x) => x.day === dayKey(now) && x.full && kinds.includes(x.kind));
-	const hold = (id, week) => FACE[id].hold === "week" ? week <= 2 ? 5 : 10 : FACE[id].hold;
-	const dose = (id, week) => `${FACE[id].name.toLowerCase()} ${FACE[id].sets}\u00a0×\u00a0${hold(id, week)}\u00a0s`;
+	const dose = (id, week) => `${FACE[id].name.toLowerCase()} ${FACE[id].sets}\u00a0×\u00a0${holdFor(id, week)}\u00a0s`;
+	const learned = (s) => s.faceSessions.some((x) => YOGA_KINDS.includes(x.kind));
 	function item(now) {
 		const s = state();
 		const week = faceWeek(s, now);
@@ -2669,17 +2669,13 @@ function faceScreens(app) {
 			return `<li class="${done ? "done" : ""}"><span>${label}</span><strong>${stop ? "en pausa" : done ? "✓ hecha" : `${minutes(steps)} min`}</strong></li>`;
 		};
 		const neck = paused || neckStopped(s);
-		return (walkDay(now) ? li("Cara y cuello: postura y cuello", ["posture"], buildFace("posture", week, { tongue: s.prefs.tongue }), neck) : s.prefs.tongue ? li("Cara y cuello: lengua contra el paladar", ["tongue"], buildFace("tongue", week), neck) : "") + (yogaDay(yw, now) ? li("Yoga facial", YOGA, buildFace(yogaKind(yw), week)) : "");
+		return (walkDay(now) ? li("Cara y cuello: postura y cuello", ["posture"], buildFace("posture", week, { tongue: s.prefs.tongue }), neck) : s.prefs.tongue ? li("Cara y cuello: lengua contra el paladar", ["tongue"], buildFace("tongue", week), neck) : "") + (yogaDay(yw, now) ? li("Yoga facial", YOGA_KINDS, buildFace(yogaKind(yw, learned(s)), week)) : "");
 	}
 	function postureCard(s, now, week) {
 		if (neckStopped(s)) return box("alert", `<p>${NECK}</p>`);
 		if (walkDay(now)) {
 			if (did(s, now, ["posture"])) return "<p>Postura y cuello: hecha hoy.</p>";
-			return `<p>Postura y cuello: ${[
-				"chinTuck",
-				"chinBall",
-				...s.prefs.tongue ? ["tongue"] : []
-			].map((id) => dose(id, week)).join(", ")}.</p>
+			return `<p>Postura y cuello: ${postureIds(s.prefs.tongue).map((id) => dose(id, week)).join(", ")}.</p>
         <button class="primary" data-do="faceStart" data-kind="posture">Empezar postura y cuello</button>`;
 		}
 		if (!s.prefs.tongue) return "";
@@ -2690,8 +2686,9 @@ function faceScreens(app) {
 		const yw = yogaWeek(s, now);
 		if (!yw) return `<p>El yoga facial empieza en la semana 3${s.face.start === null ? ", dos semanas después de tu primera sesión" : ""}.</p>`;
 		if (!yogaDay(yw, now)) return "<p>Hoy no toca yoga facial: desde su semana 9 va lunes, miércoles, viernes y domingo.</p>";
-		if (did(s, now, YOGA)) return "<p>Yoga facial: hecho hoy.</p>";
-		return `<p>Yoga facial · semana ${yw}: ${yw === 1 ? "la sesión corta, para aprender los ejercicios" : "la sesión completa"}, ${minutes(buildFace(yogaKind(yw), week))} min.</p>
+		if (did(s, now, YOGA_KINDS)) return "<p>Yoga facial: hecho hoy.</p>";
+		const kind = yogaKind(yw, learned(s));
+		return `<p>Yoga facial · semana ${yw}: ${kind === "yoga15" ? "la sesión corta, para aprender los ejercicios" : "la sesión completa"}, ${minutes(buildFace(kind, week))} min.</p>
       <button class="primary" data-do="faceStart" data-kind="yoga">Empezar yoga facial</button>`;
 	}
 	function card(now) {
@@ -2699,9 +2696,9 @@ function faceScreens(app) {
 		const m = faceMode(s);
 		const week = faceWeek(s, now);
 		const section = (html) => `<section class="card"><h2>Cara y cuello · Semana ${week}</h2>${html}</section>`;
-		if (m === "urgent") return section("<p>En pausa por la urgencia del cuestionario inicial.</p>");
-		if (m === "consult") return section(`${box("warn", `<p>${CONSULT}</p>`)}<button data-do="faceCheck">Volver a contestar las preguntas de cara y cuello</button>`);
+		if (m === "urgent") return section(`<p>En pausa ${s.screening?.urgency === "urgent" ? "por la urgencia del cuestionario inicial" : "mientras falta volver a contestar el cuestionario inicial por una señal de la revisión semanal"}.</p><button data-do="rescreen">Volver a contestar el cuestionario</button>`);
 		if (m === "paused") return section(`${box("warn", `<p>${JAW_ADVICE}</p>`)}<button data-do="faceCleared">Ya se me quitó</button>`);
+		if (m !== "normal") return section(`${m === "consult" ? box("warn", `<p>${CONSULT}</p>`) : ""}<button data-do="faceCheck">Volver a contestar las preguntas de cara y cuello</button>`);
 		return section(`${s.face.photoAt === null || now - s.face.photoAt >= PHOTO_EVERY * DAY$1 ? box("note", `<p>Foto del mes: de frente y de perfil, con la misma luz, distancia y ángulo. La app no guarda fotos.</p>
         <button data-do="facePhoto">Ya la tomé</button>`) : ""}${postureCard(s, now, week)}${yogaCard(s, now, week)}
       <p class="small">Lávate las manos antes. Presión de los dedos firme, sin dolor. Entre ejercicios, dientes separados y mandíbula suelta. No aprietes los dientes ni gires o truenes el cuello.</p>
@@ -2712,16 +2709,17 @@ function faceScreens(app) {
 		const days = weekDays(now);
 		const count = (kinds) => s.faceSessions.filter((x) => x.full && days.includes(x.day) && kinds.includes(x.kind)).length;
 		const yw = yogaWeek(s, now);
-		return `<p>Cara y cuello: postura ${count(["posture"])} de 5${yw ? `, yoga facial ${count(YOGA)} de ${yw <= 8 ? 7 : 4}` : ""}</p>`;
+		return `<p>Cara y cuello: postura ${count(["posture"])} de 5${yw ? `, yoga facial ${count(YOGA_KINDS)}` : ""}</p>`;
 	};
 	function progress(now) {
 		const s = state();
 		if (s.face.start === null) return "";
 		const week = faceWeek(s, now);
 		const yw = yogaWeek(s, now);
-		const photo = s.face.photoAt === null ? "todavía no la tomas" : `la última, hace ${Math.floor((now - s.face.photoAt) / DAY$1)} días`;
+		const ago = Math.floor((now - s.face.photoAt) / DAY$1);
+		const photo = s.face.photoAt === null ? "todavía no la tomas" : ago < 1 ? "hoy" : `la última, hace ${ago} ${ago === 1 ? "día" : "días"}`;
 		return `<section class="card"><h2>Cara y cuello · Semana ${week}</h2>
-      <p>Barbilla hacia atrás: 10 × ${hold("chinTuck", week)} s.</p>
+      <p>Barbilla hacia atrás: 10 × ${holdFor("chinTuck", week)} s.</p>
       <p>${yw ? `Yoga facial: semana ${yw}, ${yw <= 8 ? "todos los días" : "lunes, miércoles, viernes y domingo"}.` : "El yoga facial empieza en la semana 3."}</p>
       <p>Foto del mes: ${photo}.</p>
       ${faceMode(s) === "normal" ? "<button data-do=\"faceRepeat\">Repetir esta semana de cara y cuello</button>" : ""}</section>`;
@@ -2730,7 +2728,7 @@ function faceScreens(app) {
 		const s = state();
 		const now = Date.now();
 		const yw = yogaWeek(s, now);
-		const kind = asked === "yoga" ? yogaKind(yw) : asked;
+		const kind = asked === "yoga" ? yogaKind(yw, learned(s)) : asked;
 		if (faceMode(s) !== "normal" || (asked === "yoga" ? !yogaDay(yw, now) : neckStopped(s))) return app.go("home");
 		const steps = buildFace(kind, faceWeek(s, now), { tongue: s.prefs.tongue });
 		app.go("face");
@@ -2757,7 +2755,7 @@ function faceScreens(app) {
 			minutes: round1(seconds / 60),
 			full
 		};
-		const next = YOGA.includes(kind) ? s : startFace(s, at);
+		const next = YOGA_KINDS.includes(kind) ? s : startFace(s, at);
 		app.persist({
 			...next,
 			startedAt: s.startedAt ?? at,
@@ -2773,7 +2771,7 @@ function faceScreens(app) {
 		app.go(next);
 	}
 	function screen(kind) {
-		const yoga = YOGA.includes(kind);
+		const yoga = YOGA_KINDS.includes(kind);
 		return {
 			onStep({ step }) {
 				const ex = FACE[step.ex];
@@ -2814,12 +2812,12 @@ function faceScreens(app) {
         </div>
       </div>`,
 			faceHurt: () => `<h1>Paramos la sesión</h1>
-      <p>¿Qué pasó?</p>
+      ${emergencyBox()}
+      <p>Si no es una emergencia, ¿qué pasó?</p>
       <button data-do="facePain">Dolor de mandíbula, chasquido con dolor o bloqueo; dolor de cara, cuello o cabeza; o mareo</button>
       <button data-do="faceNeck">Hormigueo, adormecimiento, debilidad o frío en un brazo o una mano</button>
       <button data-do="home">Otra cosa: volver a Hoy</button>
-      <p class="small">Un chasquido sin dolor es común y no cuenta.</p>
-      ${emergencyBox()}`
+      <p class="small">Un chasquido sin dolor es común y no cuenta.</p>`
 		},
 		actions: {
 			faceStart: (el) => start(el.dataset.kind),
@@ -2827,7 +2825,6 @@ function faceScreens(app) {
 			faceHurt: () => stopHere("faceHurt"),
 			facePain: () => {
 				const s = state();
-				app.say(JAW_ADVICE);
 				app.commit({
 					...s,
 					facePains: [...s.facePains, Date.now()]
@@ -2835,7 +2832,6 @@ function faceScreens(app) {
 			},
 			faceNeck: () => {
 				const s = state();
-				app.say(NECK);
 				app.commit({
 					...s,
 					face: {
@@ -3122,9 +3118,10 @@ function mount(root, { storage, player = createPlayer }) {
 			if (view === "home") go("home");
 			return;
 		}
-		session.runner.visibility(document.hidden);
-		if (document.hidden) session.onHide?.(session);
-		else awake(session);
+		const current = session;
+		current.runner.visibility(document.hidden);
+		if (document.hidden) current.onHide?.(current);
+		else if (session === current) awake(current);
 	}
 	document.addEventListener("visibilitychange", onVisibility);
 	function modeBox(m) {
@@ -3213,6 +3210,8 @@ function mount(root, { storage, player = createPlayer }) {
         <li>El resultado depende de hacerlo.</li>
         <li>Los ejercicios no deben doler. Si algo duele, toca "Me duele".</li>
       </ul>
+      <h2>Cara y cuello</h2>
+      <ul>${FACE_EXPECT.map((e) => `<li>${e}</li>`).join("")}</ul>
       <button class="primary" data-do="expectSeen">Continuar</button>`,
 		alarms: () => `<h1>Tus dos horas</h1>
       <p>La app no manda notificaciones. Elige dos horas ligadas a una rutina y ponlas en la alarma del celular.</p>
