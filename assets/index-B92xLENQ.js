@@ -155,7 +155,8 @@ var CHANGES = [
 	5,
 	7,
 	9,
-	11
+	11,
+	15
 ];
 var RATINGS$1 = [
 	["easy", "Fácil"],
@@ -230,6 +231,16 @@ var EXERCISES = {
 		cue: "Zancada hacia atrás, espalda recta, rango cómodo. Primero sin peso.",
 		avoid: "Cuida las rodillas."
 	},
+	lunge: {
+		name: "Zancada al frente",
+		art: "la",
+		reps: LEGS,
+		sides: true,
+		variant: "baja en 3 segundos",
+		alt: "goblet",
+		cue: "La pesa en una mano. Paso al frente con el pecho arriba y los hombros atrás; empuja con la pierna de adelante para volver. Rango cómodo.",
+		avoid: "Cuida las rodillas."
+	},
 	press: {
 		name: "Press sobre la cabeza",
 		art: "el",
@@ -251,6 +262,17 @@ var EXERCISES = {
 		alt: null,
 		cue: "La mirada en la pesa, brazo vertical y codo firme; si la pesa se inclina, bájala con las dos manos, sin intentar salvarla. Con la pesa sólo si te salen 8 limpias; si no, sin peso.",
 		avoid: "Cuida los hombros."
+	},
+	figureEight: {
+		name: "Figura ocho",
+		art: "la",
+		fixed: {
+			sets: 2,
+			reps: 10
+		},
+		alt: null,
+		cue: "Pies más abiertos que los hombros y rodillas dobladas, en un rango cómodo. Pasa la pesa de una mano a la otra por debajo de cada pierna, dibujando un 8.",
+		avoid: "Cuida la espalda baja y las rodillas."
 	},
 	hinge: {
 		name: "Bisagra de cadera sin peso",
@@ -306,6 +328,12 @@ function ladder({ reps, secs, variant, talk }) {
 }
 var LADDERS = Object.fromEntries(Object.entries(EXERCISES).filter(([, e]) => !e.fixed).map(([id, e]) => [id, ladder(e)]));
 var prescription = (id, step) => LADDERS[id][Math.min(step, LADDERS[id].length) - 1];
+function turn(week, from) {
+	const open = from.filter(([w]) => w <= week);
+	if (!open.length) return null;
+	const newest = open.at(-1)[0];
+	return open[(open.length - 1 + Math.floor((week - newest) / 2)) % open.length][1];
+}
 var SESSIONS$1 = [
 	{
 		name: "Piernas A",
@@ -329,7 +357,7 @@ var SESSIONS$1 = [
 		ids: (week) => [
 			"hinge",
 			"squat",
-			...week >= 11 ? ["getup"] : [],
+			turn(week, [[11, "getup"], [15, "figureEight"]]),
 			"carry"
 		]
 	},
@@ -337,7 +365,7 @@ var SESSIONS$1 = [
 		name: "Piernas B",
 		ids: (week, swing) => [
 			week >= 7 && swing ? "swing" : "deadlift",
-			week >= 5 ? "split" : "goblet",
+			turn(week, [[3, "lunge"], [5, "split"]]) ?? "goblet",
 			"carry"
 		]
 	},
@@ -443,7 +471,7 @@ function ladderState(lifts, today) {
 var started = (lifts, id) => lifts.some((l) => l.items.some((i) => i.id === id));
 function swingDue(lifts, { today, walkUp, restart = null }) {
 	const { week, n } = nextLift(lifts, restart, walkUp);
-	return week >= 7 && n === 4 && !started(lifts, "swing") && !ladderState(lifts, today).swing?.swapped;
+	return week >= 7 && n === 4 && (week === 7 || !CHANGES.includes(week)) && !started(lifts, "swing") && !ladderState(lifts, today).swing?.swapped;
 }
 function liftPlan(lifts, { restart, today, walkUp, swing = false, session: at = null }) {
 	const next = at ? {
@@ -2240,6 +2268,19 @@ var WHERE = {
 	rest: "Descanso",
 	ready: "Descanso"
 };
+var PICS = /* @__PURE__ */ new Set([
+	"hinge",
+	"squat",
+	"deadlift",
+	"goblet",
+	"row",
+	"floorPress",
+	"carry",
+	"lunge",
+	"swing",
+	"getup",
+	"figureEight"
+]);
 var LABEL$2 = Object.fromEntries(RATINGS$1);
 var CONSULT$1 = "Consulta antes de empezar la pesa rusa. Mientras tanto puedes caminar.";
 var UNLOCK = "Cuando te den el visto bueno, vuelve a contestar las preguntas sin marcar esa señal.";
@@ -2304,7 +2345,7 @@ function liftScreens(app) {
 		return alt === null ? "se omite" : alt ? `se cambió por ${the(alt)}` : fixed ? "" : "bajó un escalón";
 	}
 	function pains(all, last) {
-		return Object.entries(all).filter(([id, e]) => e.hurt >= 2 && last?.items.some((i) => i.id === id && i.hurt)).map(([id]) => box("warn", `<p>${EXERCISES[id].name}: te dolió dos sesiones seguidas${change(id) ? ` y ${change(id)}` : ""}. Si sigue una semana más, consulta.</p>`)).join("");
+		return Object.entries(all).filter(([id, e]) => e.hurt >= 2 && last?.items.some((i) => i.id === id && i.hurt)).map(([id]) => box("warn", `<p>${EXERCISES[id].name}: te dolió las dos últimas veces que lo hiciste${change(id) ? ` y ${change(id)}` : ""}. Si sigue una semana más, consulta.</p>`)).join("");
 	}
 	function card(now) {
 		const s = state();
@@ -2484,11 +2525,21 @@ function liftScreens(app) {
 		const s = state();
 		const plan = current.plan;
 		const total = Math.max(...steps.map((st) => st.round ?? 1));
+		$(".pic").onerror = (e) => {
+			e.target.hidden = true;
+		};
 		return {
 			onStep({ step }) {
 				const ex = EXERCISES[step.ex];
 				$(".session").dataset.type = step.type;
 				$(".where").textContent = ex ? ex.name : WHERE[step.type];
+				const shown = step.ex ?? step.next;
+				const pic = $(".pic");
+				pic.hidden = !PICS.has(shown);
+				if (!pic.hidden) {
+					pic.src = `/keggelatto/lift/${shown}.webp`;
+					pic.alt = `Dibujo: ${EXERCISES[shown].name}`;
+				}
 				$(".left").textContent = step.type === "side" ? "Cambia de lado" : ex ? `${[
 					"",
 					"Primer lado · ",
@@ -2517,6 +2568,7 @@ function liftScreens(app) {
 			lift: () => `<div class="session lift" data-type="warm">
         <div class="light"></div>
         <p class="where"></p>
+        <img class="pic" alt="" hidden>
         <p class="count"></p>
         <p class="left"></p>
         <p class="hint"></p>
@@ -2556,7 +2608,7 @@ function liftScreens(app) {
 				const next = alt === null ? "se omite" : alt ? `cambia por ${the(alt)}` : fixed ? "" : "baja un escalón";
 				const more = current.steps.slice(current.index).some((st) => (st.type === "set" || st.type === "timed") && st.ex !== current.ex);
 				return `<h1>Terminamos ${the(current.ex)}</h1>
-        <p>${lastItem(prior, current.ex)?.hurt ? `Te dolió dos sesiones seguidas${next ? `: la próxima vez ${next}` : ""}. Si sigue una semana más, consulta.` : "Si vuelve a doler la próxima sesión, baja un escalón o cambia a su alternativa."}</p>
+        <p>${lastItem(prior, current.ex)?.hurt ? `Te dolió las dos últimas veces que lo hiciste${next ? `: la próxima vez ${next}` : ""}. Si sigue una semana más, consulta.` : "Si vuelve a doler la próxima vez que lo hagas, baja un escalón o cambia a su alternativa."}</p>
         ${more ? "<button class=\"primary\" data-do=\"liftResume\">Seguir con la sesión</button>" : ""}
         <button data-do="liftStop">Terminar aquí</button>`;
 			}

@@ -138,6 +138,8 @@ details { margin: 12px 0; color: var(--muted); }
 /* Caminadora: el celular va en el tablero o el escritorio, así que la velocidad va enorme (sección 14). */
 .session.walk, .session.lift { justify-content: flex-start; padding-top: 48px; }
 .session.lift .count { font-size: 4.5rem; }
+/* min-height: 0 deja que el dibujo se encoja en pantallas chicas para que "Listo" no quede bajo los botones. */
+.session .pic { width: 100%; max-width: 28rem; max-height: 30vh; min-height: 0; object-fit: contain; border-radius: 12px; background: #fff; }
 .session[data-type="set"] .light, .session[data-type="timed"] .light { height: 60%; opacity: 0.45; }
 .session[data-type="rest"] .light, .session[data-type="practice"] .light { background: var(--breath); height: 20%; opacity: 0.35; }
 .session[data-type="ready"] .light, .session[data-type="side"] .light { height: 40%; opacity: 0.45; }
